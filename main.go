@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"github.com/google/go-github/github"
 	"github.com/howeyc/gopass"
-	"github.com/libgit2/git2go"
 	"golang.org/x/oauth2"
 	"os"
 	"os/exec"
@@ -23,7 +22,7 @@ func main() {
 		panic(err)
 	}
 
-	askForSSHPassphrase()
+	// askForSSHPassphrase()
 	accessToken := askForGithubAccessToken()
 
 	client = githubClient(accessToken)
@@ -168,18 +167,11 @@ func duplicateRepository(repo github.Repository) {
 
 func bareCloneRepo(repo github.Repository, clonedPath string) {
 	fmt.Printf("Bare Cloning %v\n", *repo.Name)
-	cloneOptions := &git.CloneOptions{
-		Bare: true,
-	}
-	cloneOptions.FetchOptions = &git.FetchOptions{
-		RemoteCallbacks: git.RemoteCallbacks{
-			CredentialsCallback:      credentialsCallback,
-			CertificateCheckCallback: certificateCheckCallback,
-		},
-	}
 
 	exec.Command("rm", "-Rf", clonedPath).Run()
-	_, err := git.Clone(*repo.SSHURL, clonedPath, cloneOptions)
+	os.Chdir("/tmp")
+	output, err := exec.Command("git", "clone", "--bare", *repo.SSHURL, clonedPath).CombinedOutput()
+	fmt.Println(string(output))
 	if err != nil {
 		fmt.Println(err)
 		return
@@ -203,7 +195,8 @@ func createNewPublicRepo(repo github.Repository) (*github.Repository, error) {
 func mirrorPushRepoToGihub(repo github.Repository, clonedPath string) error {
 	fmt.Printf("Pushing to %v\n", *repo.Name)
 	os.Chdir(clonedPath)
-	_, giterror := exec.Command("git", "push", "--mirror", *repo.SSHURL).CombinedOutput()
+	output, giterror := exec.Command("git", "push", "--mirror", *repo.SSHURL).CombinedOutput()
+	fmt.Println(string(output))
 	if giterror != nil {
 		return fmt.Errorf("Having trouble pushing repo %v. Error: %v", *repo.Name, giterror)
 	}
@@ -213,19 +206,4 @@ func mirrorPushRepoToGihub(repo github.Repository, clonedPath string) error {
 
 func cleanUpCloneDir(clonedPath string) {
 	exec.Command("rm", "-Rf", clonedPath).Run()
-}
-
-func credentialsCallback(url string, username string, allowedTypes git.CredType) (git.ErrorCode, *git.Cred) {
-
-	usr, err := user.Current()
-	if err != nil {
-		panic(err)
-	}
-	ret, cred := git.NewCredSshKey("git", usr.HomeDir+"/.ssh/id_rsa.pub", usr.HomeDir+"/.ssh/id_rsa", passphrase)
-	return git.ErrorCode(ret), &cred
-}
-
-// Made this one just return 0 during troubleshooting...
-func certificateCheckCallback(cert *git.Certificate, valid bool, hostname string) git.ErrorCode {
-	return 0
 }
